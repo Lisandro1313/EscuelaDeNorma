@@ -1,0 +1,255 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import socketService from '../../services/socket';
+
+interface Notification {
+  id: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  title: string;
+  message: string;
+  timestamp: Date;
+  read: boolean;
+  icon: string;
+  action?: {
+    label: string;
+    url: string;
+  };
+}
+
+const NotificationCenter: React.FC = () => {
+  const { usuario } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    // Cargar notificaciones reales del usuario
+    const loadNotifications = async () => {
+      if (!usuario) return;
+      
+      try {
+        // Por ahora iniciamos con array vacío, más tarde implementaremos API
+        setNotifications([]);
+        setUnreadCount(0);
+        
+        // TODO: Implementar API para cargar notificaciones reales
+        // const response = await fetch('http://localhost:5000/api/notifications', {
+        //   headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        // });
+        // if (response.ok) {
+        //   const data = await response.json();
+        //   setNotifications(data);
+        //   setUnreadCount(data.filter(n => !n.read).length);
+        // }
+      } catch (error) {
+        console.error('Error al cargar notificaciones:', error);
+      }
+    };
+
+    loadNotifications();
+
+    // Configurar Socket.io para notificaciones en tiempo real
+    if (usuario) {
+      socketService.connect(localStorage.getItem('token') || '');
+      
+      socketService.onNotification((notification: Notification) => {
+        setNotifications(prev => [notification, ...prev]);
+        setUnreadCount(prev => prev + 1);
+        
+        // Mostrar notificación del navegador si está permitido
+        if (Notification.permission === 'granted') {
+          new Notification(notification.title, {
+            body: notification.message,
+            icon: '/favicon.ico'
+          });
+        }
+      });
+    }
+
+    // Solicitar permiso para notificaciones del navegador
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    return () => {
+      socketService.offNotification();
+    };
+  }, [usuario]);
+
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'success': return 'text-green-600 bg-green-100';
+      case 'warning': return 'text-yellow-600 bg-yellow-100';
+      case 'error': return 'text-red-600 bg-red-100';
+      default: return 'text-blue-600 bg-blue-100';
+    }
+  };
+
+  const formatTimeAgo = (timestamp: Date) => {
+    const now = new Date();
+    const diff = now.getTime() - timestamp.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'Ahora';
+    if (minutes < 60) return `${minutes}m`;
+    if (hours < 24) return `${hours}h`;
+    return `${days}d`;
+  };
+
+  const markAsRead = (notificationId: string) => {
+    setNotifications(prev => 
+      prev.map(n => 
+        n.id === notificationId ? { ...n, read: true } : n
+      )
+    );
+    setUnreadCount(prev => Math.max(0, prev - 1));
+  };
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setUnreadCount(0);
+  };
+
+  const deleteNotification = (notificationId: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    const notification = notifications.find(n => n.id === notificationId);
+    if (notification && !notification.read) {
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+  };
+
+  return (
+    <div className="relative">
+      {/* Botón de notificaciones */}
+      <button
+        onClick={() => setShowDropdown(!showDropdown)}
+        className="relative bg-gray-100 p-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition duration-200"
+      >
+        <span className="text-lg">🔔</span>
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {/* Dropdown de notificaciones */}
+      {showDropdown && (
+        <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border z-50">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b">
+            <h3 className="text-lg font-medium text-gray-900">
+              🔔 Notificaciones
+            </h3>
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllAsRead}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Marcar todas como leídas
+              </button>
+            )}
+          </div>
+
+          {/* Lista de notificaciones */}
+          <div className="max-h-96 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="p-8 text-center">
+                <span className="text-4xl mb-2 block">📭</span>
+                <h4 className="text-gray-900 font-medium mb-1">
+                  No hay notificaciones
+                </h4>
+                <p className="text-gray-600 text-sm">
+                  Las notificaciones aparecerán aquí
+                </p>
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className={`p-4 border-b hover:bg-gray-50 transition duration-200 ${
+                    !notification.read ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                  }`}
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className={`p-2 rounded-full ${getTypeColor(notification.type)}`}>
+                      <span>{notification.icon}</span>
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className={`text-sm font-medium ${
+                            !notification.read ? 'text-gray-900' : 'text-gray-700'
+                          }`}>
+                            {notification.title}
+                          </h4>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {notification.message}
+                          </p>
+                          
+                          {notification.action && (
+                            <button className="mt-2 text-xs text-blue-600 hover:text-blue-800">
+                              {notification.action.label}
+                            </button>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center space-x-2 ml-2">
+                          <span className="text-xs text-gray-500">
+                            {formatTimeAgo(notification.timestamp)}
+                          </span>
+                          
+                          <div className="flex space-x-1">
+                            {!notification.read && (
+                              <button
+                                onClick={() => markAsRead(notification.id)}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Marcar como leída"
+                              >
+                                <span className="text-xs">👁️</span>
+                              </button>
+                            )}
+                            
+                            <button
+                              onClick={() => deleteNotification(notification.id)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Eliminar"
+                            >
+                              <span className="text-xs">🗑️</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          {notifications.length > 0 && (
+            <div className="p-3 border-t bg-gray-50">
+              <button className="w-full text-center text-sm text-blue-600 hover:text-blue-800">
+                Ver todas las notificaciones
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Overlay para cerrar dropdown */}
+      {showDropdown && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setShowDropdown(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+export default NotificationCenter;

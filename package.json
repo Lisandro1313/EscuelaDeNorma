@@ -1,0 +1,24 @@
+{
+  "name": "campus-virtual-deploy",
+  "version": "1.0.0",
+  "description": "Scripts de deployment para Campus Virtual Norma",
+  "scripts": {
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm install --production",
+    "deploy:prepare": "npm run build:frontend && npm run build:backend",
+    "dev:full": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && node server.js",
+    "dev:frontend": "cd frontend && npx vite --port 3000",
+    "start:production": "cd backend && npm start",
+    "test:api": "cd backend && npm test",
+    "test:frontend": "cd frontend && npm test"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "mercadopago": "^2.9.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
