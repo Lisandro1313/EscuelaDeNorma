@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
+import ActivityLogs from './ActivityLogs';
 
 interface SystemStats {
   totalUsers: number;
@@ -22,7 +23,7 @@ interface User {
 export const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [selectedTab, setSelectedTab] = useState<'dashboard' | 'users' | 'system'>('dashboard');
+  const [selectedTab, setSelectedTab] = useState<'dashboard' | 'users' | 'system' | 'activity'>('dashboard');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -102,6 +103,16 @@ export const AdminDashboard: React.FC = () => {
               }`}
             >
               👥 Usuarios
+            </button>
+            <button
+              onClick={() => setSelectedTab('activity')}
+              className={`py-2 px-4 border-b-2 font-medium text-sm ${
+                selectedTab === 'activity'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              📋 Actividad
             </button>
             <button
               onClick={() => setSelectedTab('system')}
@@ -206,6 +217,11 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Activity Tab */}
+        {selectedTab === 'activity' && (
+          <ActivityLogs />
         )}
 
         {/* Users Tab */}

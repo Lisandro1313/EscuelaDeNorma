@@ -80,24 +80,12 @@ module.exports = (db, authenticateToken) => {
         );
       });
 
-      // Crear notificación
+      // Enviar notificación de inscripción exitosa
       try {
-        await new Promise((resolve, reject) => {
-          db.db.run(
-            `INSERT INTO notifications (user_id, title, message, type)
-             VALUES (?, ?, ?, ?)`,
-            [
-              userId,
-              '¡Inscripción exitosa!',
-              `Te has inscrito exitosamente al curso gratuito: ${course.name}`,
-              'info'
-            ],
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
+        const notificationHelper = req.app.get('notificationHelper');
+        if (notificationHelper) {
+          await notificationHelper.notifyEnrollmentSuccess(userId, course);
+        }
       } catch (error) {
         console.error('Error al crear notificación:', error);
       }

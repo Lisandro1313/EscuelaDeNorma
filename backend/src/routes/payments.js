@@ -162,6 +162,24 @@ module.exports = (db, authenticateToken, requireProfessor) => {
                                 });
                             });
 
+                            // Obtener información del curso para la notificación
+                            const course = await new Promise((resolve, reject) => {
+                                db.db.get('SELECT * FROM courses WHERE id = ?', [courseId], (err, row) => {
+                                    if (err) reject(err);
+                                    else resolve(row);
+                                });
+                            });
+
+                            // Enviar notificación de pago aprobado
+                            const notificationHelper = req.app.get('notificationHelper');
+                            if (notificationHelper && course) {
+                                await notificationHelper.notifyPaymentApproved(
+                                    userId,
+                                    course,
+                                    paymentInfo.transaction_amount
+                                );
+                            }
+
                             console.log(`✅ Estudiante ${userId} inscrito en curso ${courseId}`);
                         }
                     }

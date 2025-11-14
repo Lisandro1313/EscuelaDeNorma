@@ -28,19 +28,20 @@ const NotificationCenter: React.FC = () => {
       if (!usuario) return;
       
       try {
-        // Por ahora iniciamos con array vacío, más tarde implementaremos API
-        setNotifications([]);
-        setUnreadCount(0);
+        const response = await fetch('http://localhost:5000/api/notifications', {
+          headers: { 
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
         
-        // TODO: Implementar API para cargar notificaciones reales
-        // const response = await fetch('http://localhost:5000/api/notifications', {
-        //   headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        // });
-        // if (response.ok) {
-        //   const data = await response.json();
-        //   setNotifications(data);
-        //   setUnreadCount(data.filter(n => !n.read).length);
-        // }
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setNotifications(data.notifications || []);
+            setUnreadCount(data.unreadCount || 0);
+          }
+        }
       } catch (error) {
         console.error('Error al cargar notificaciones:', error);
       }
@@ -98,25 +99,67 @@ const NotificationCenter: React.FC = () => {
     return `${days}d`;
   };
 
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(n => 
-        n.id === notificationId ? { ...n, read: true } : n
-      )
-    );
-    setUnreadCount(prev => Math.max(0, prev - 1));
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/notifications/${notificationId}/read`, {
+        method: 'PUT',
+        headers: { 
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        setNotifications(prev => 
+          prev.map(n => 
+            n.id === notificationId ? { ...n, read: true } : n
+          )
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch (error) {
+      console.error('Error al marcar como leída:', error);
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    setUnreadCount(0);
+  const markAllAsRead = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/notifications/mark-all-read', {
+        method: 'PUT',
+        headers: { 
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      console.error('Error al marcar todas como leídas:', error);
+    }
   };
 
-  const deleteNotification = (notificationId: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    const notification = notifications.find(n => n.id === notificationId);
-    if (notification && !notification.read) {
-      setUnreadCount(prev => Math.max(0, prev - 1));
+  const deleteNotification = async (notificationId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/notifications/${notificationId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const notification = notifications.find(n => n.id === notificationId);
+        setNotifications(prev => prev.filter(n => n.id !== notificationId));
+        if (notification && !notification.read) {
+          setUnreadCount(prev => Math.max(0, prev - 1));
+        }
+      }
+    } catch (error) {
+      console.error('Error al eliminar notificación:', error);
     }
   };
 

@@ -23,67 +23,24 @@ const Login: React.FC = () => {
     }
   };
 
-  const usarCuentaPrueba = (tipoCuenta: 'alumno' | 'profesor' | 'admin') => {
-    const cuentas = {
-      alumno: { email: 'alumno@test.com', password: '123456' },
-      profesor: { email: 'profesor@test.com', password: '123456' },
-      admin: { email: 'admin@campusnorma.com', password: 'admin123' }
-    };
-    
-    setEmail(cuentas[tipoCuenta].email);
-    setPassword(cuentas[tipoCuenta].password);
-    setError('');
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-xl">
+        {/* Logo */}
         <div className="text-center">
+          <div className="mx-auto w-40 h-40 mb-4">
+            <img 
+              src="/logo.png" 
+              alt="ESFD Logo" 
+              className="w-full h-full object-contain rounded-2xl shadow-lg"
+            />
+          </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
             Campus Virtual
           </h2>
           <p className="text-gray-600">
             Escuela de Enseñanza Superior
           </p>
-        </div>
-
-        {/* Indicador de conexión con backend */}
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-          <div className="flex items-center">
-            <span className="text-green-500 mr-2">🟢</span>
-            <span className="text-sm text-green-700">Conectado al servidor backend</span>
-          </div>
-        </div>
-
-        {/* Cuentas de prueba */}
-        <div className="bg-gray-50 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">🔧 Cuentas de Prueba (Backend Real)</h3>
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => usarCuentaPrueba('alumno')}
-              className="w-full text-left px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 rounded transition duration-200"
-              disabled={loading}
-            >
-              👩‍🎓 <strong>Alumno:</strong> alumno@campus.com / 123456
-            </button>
-            <button
-              type="button"
-              onClick={() => usarCuentaPrueba('profesor')}
-              className="w-full text-left px-3 py-2 text-sm bg-green-100 hover:bg-green-200 rounded transition duration-200"
-              disabled={loading}
-            >
-              👨‍🏫 <strong>Profesor:</strong> profesor@campus.com / 123456
-            </button>
-            <button
-              type="button"
-              onClick={() => usarCuentaPrueba('admin')}
-              className="w-full text-left px-3 py-2 text-sm bg-purple-100 hover:bg-purple-200 rounded transition duration-200"
-              disabled={loading}
-            >
-              👩‍💼 <strong>Admin:</strong> admin@campus.com / 123456
-            </button>
-          </div>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -163,7 +120,6 @@ const Login: React.FC = () => {
         <div className="mt-6 text-center text-sm text-gray-500">
           <p>💡 Acceso gratuito a cursos</p>
           <p>💳 Paga solo las clases que tomes</p>
-          <p className="mt-2 text-xs text-green-600">✅ Backend funcionando con JWT y base de datos</p>
         </div>
       </div>
     </div>

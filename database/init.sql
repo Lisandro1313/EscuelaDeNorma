@@ -367,3 +367,25 @@ CREATE INDEX IF NOT EXISTS idx_user_points_user ON user_points(user_id);
 CREATE INDEX IF NOT EXISTS idx_point_transactions_user ON point_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
+
+-- Tabla de registro de actividad
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  user_name VARCHAR(255),
+  user_role VARCHAR(50),
+  action_type VARCHAR(100) NOT NULL,
+  action_description TEXT NOT NULL,
+  entity_type VARCHAR(50),
+  entity_id INTEGER,
+  entity_name VARCHAR(255),
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_date ON activity_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_type ON activity_logs(action_type);
+

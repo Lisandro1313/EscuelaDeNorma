@@ -20,6 +20,10 @@ import ForumPage from './pages/ForumPage';
 import GamificationPage from './pages/GamificationPage';
 import UsersManagement from './pages/UsersManagement';
 import Profile from './components/Profile/Profile';
+import MisClases from './pages/MisClases';
+import MiProgreso from './pages/MiProgreso';
+import MisPagos from './pages/MisPagos';
+import Calendario from './pages/Calendario';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { StudentProgressTracker } from './components/Student/StudentProgressTracker';
 import { PaymentSuccess, PaymentFailure, PaymentPending } from './components/Payment/PaymentResults';
@@ -105,6 +109,22 @@ function AppContent() {
           <Route 
             path="/profile" 
             element={isAuthenticated ? <div className="bg-gray-50"><Profile /></div> : <Navigate to="/login" />} 
+          />
+          <Route 
+            path="/mis-clases" 
+            element={isAuthenticated ? <div className="bg-gray-50"><MisClases /></div> : <Navigate to="/login" />} 
+          />
+          <Route 
+            path="/mi-progreso" 
+            element={isAuthenticated ? <div className="bg-gray-50"><MiProgreso /></div> : <Navigate to="/login" />} 
+          />
+          <Route 
+            path="/pagos" 
+            element={isAuthenticated ? <div className="bg-gray-50"><MisPagos /></div> : <Navigate to="/login" />} 
+          />
+          <Route 
+            path="/calendario" 
+            element={isAuthenticated ? <div className="bg-gray-50"><Calendario /></div> : <Navigate to="/login" />} 
           />
           <Route 
             path="/admin/users" 

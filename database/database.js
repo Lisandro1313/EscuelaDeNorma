@@ -61,7 +61,7 @@ class Database {
   async createDefaultAdmin() {
     try {
       // Verificar si ya existe un admin
-      const existingAdmin = await this.getUserByEmail('admin@campusnorma.com');
+      const existingAdmin = await this.getUserByEmail('norma.admin@escuelanorma.com');
       if (existingAdmin) {
         console.log('✅ Usuario administrador ya existe');
         return;
@@ -69,14 +69,14 @@ class Database {
 
       // Crear usuario administrador
       const bcrypt = require('bcrypt');
-      const hashedPassword = await bcrypt.hash('admin123', 10);
+      const hashedPassword = await bcrypt.hash('Norma2025!Secure', 10);
       
       const sql = `INSERT INTO users (email, password, nombre, tipo) VALUES (?, ?, ?, ?)`;
-      this.db.run(sql, ['admin@campusnorma.com', hashedPassword, 'Administrador', 'admin'], function(err) {
+      this.db.run(sql, ['norma.admin@escuelanorma.com', hashedPassword, 'Norma Silva', 'admin'], function(err) {
         if (err) {
           console.error('Error creando usuario administrador:', err);
         } else {
-          console.log('✅ Usuario administrador creado: admin@campusnorma.com / admin123');
+          console.log('✅ Usuario administrador creado: norma.admin@escuelanorma.com / Norma2025!Secure');
         }
       });
     } catch (error) {
@@ -990,6 +990,239 @@ class Database {
           reject(err);
         } else {
           resolve(rows);
+        }
+      });
+    });
+  }
+
+  // Admin - Obtener todos los usuarios
+  getAllUsers() {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT id, nombre, email, telefono, biografia, foto, rol, activo, 
+                fecha_creacion, ultimo_acceso 
+         FROM usuarios 
+         ORDER BY fecha_creacion DESC`,
+        [],
+        (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows);
+          }
+        }
+      );
+    });
+  }
+
+  // Admin - Eliminar usuario
+  deleteUser(userId) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        'DELETE FROM usuarios WHERE id = ?',
+        [userId],
+        function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve({ changes: this.changes });
+          }
+        }
+      );
+    });
+  }
+
+  // Admin - Activar/Desactivar usuario
+  toggleUserStatus(userId) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        'UPDATE usuarios SET activo = NOT activo WHERE id = ?',
+        [userId],
+        function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve({ changes: this.changes });
+          }
+        }
+      );
+    });
+  }
+
+  // Perfil - Actualizar datos del usuario
+  updateUser(userId, data) {
+    return new Promise((resolve, reject) => {
+      const fields = [];
+      const values = [];
+
+      if (data.nombre !== undefined) {
+        fields.push('nombre = ?');
+        values.push(data.nombre);
+      }
+      if (data.email !== undefined) {
+        fields.push('email = ?');
+        values.push(data.email);
+      }
+      if (data.telefono !== undefined) {
+        fields.push('telefono = ?');
+        values.push(data.telefono);
+      }
+      if (data.biografia !== undefined) {
+        fields.push('biografia = ?');
+        values.push(data.biografia);
+      }
+      if (data.foto !== undefined) {
+        fields.push('foto = ?');
+        values.push(data.foto);
+      }
+      if (data.password !== undefined) {
+        fields.push('password = ?');
+        values.push(data.password);
+      }
+
+      if (fields.length === 0) {
+        return resolve({ changes: 0 });
+      }
+
+      values.push(userId);
+
+      this.db.run(
+        `UPDATE usuarios SET ${fields.join(', ')} WHERE id = ?`,
+        values,
+        function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve({ changes: this.changes });
+          }
+        }
+      );
+    });
+  }
+
+  // Registro de actividad
+  logActivity(activityData) {
+    return new Promise((resolve, reject) => {
+      const {
+        userId,
+        userName,
+        userRole,
+        actionType,
+        actionDescription,
+        entityType = null,
+        entityId = null,
+        entityName = null,
+        ipAddress = null,
+        userAgent = null
+      } = activityData;
+
+      this.db.run(
+        `INSERT INTO activity_logs 
+         (user_id, user_name, user_role, action_type, action_description, 
+          entity_type, entity_id, entity_name, ip_address, user_agent) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, userName, userRole, actionType, actionDescription, 
+         entityType, entityId, entityName, ipAddress, userAgent],
+        function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve({ id: this.lastID });
+          }
+        }
+      );
+    });
+  }
+
+  // Obtener logs de actividad con filtros
+  getActivityLogs(filters = {}) {
+    return new Promise((resolve, reject) => {
+      let query = `SELECT * FROM activity_logs WHERE 1=1`;
+      const params = [];
+
+      if (filters.userId) {
+        query += ` AND user_id = ?`;
+        params.push(filters.userId);
+      }
+
+      if (filters.actionType) {
+        query += ` AND action_type = ?`;
+        params.push(filters.actionType);
+      }
+
+      if (filters.entityType) {
+        query += ` AND entity_type = ?`;
+        params.push(filters.entityType);
+      }
+
+      if (filters.startDate) {
+        query += ` AND created_at >= ?`;
+        params.push(filters.startDate);
+      }
+
+      if (filters.endDate) {
+        query += ` AND created_at <= ?`;
+        params.push(filters.endDate);
+      }
+
+      query += ` ORDER BY created_at DESC`;
+
+      if (filters.limit) {
+        query += ` LIMIT ?`;
+        params.push(filters.limit);
+      }
+
+      if (filters.offset) {
+        query += ` OFFSET ?`;
+        params.push(filters.offset);
+      }
+
+      this.db.all(query, params, (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows);
+        }
+      });
+    });
+  }
+
+  // Contar logs de actividad
+  countActivityLogs(filters = {}) {
+    return new Promise((resolve, reject) => {
+      let query = `SELECT COUNT(*) as total FROM activity_logs WHERE 1=1`;
+      const params = [];
+
+      if (filters.userId) {
+        query += ` AND user_id = ?`;
+        params.push(filters.userId);
+      }
+
+      if (filters.actionType) {
+        query += ` AND action_type = ?`;
+        params.push(filters.actionType);
+      }
+
+      if (filters.entityType) {
+        query += ` AND entity_type = ?`;
+        params.push(filters.entityType);
+      }
+
+      if (filters.startDate) {
+        query += ` AND created_at >= ?`;
+        params.push(filters.startDate);
+      }
+
+      if (filters.endDate) {
+        query += ` AND created_at <= ?`;
+        params.push(filters.endDate);
+      }
+
+      this.db.get(query, params, (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row.total);
         }
       });
     });

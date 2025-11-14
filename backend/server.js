@@ -17,6 +17,8 @@ const { Server } = require('socket.io');
 // Importar base de datos y servicios
 const db = require('../database/database');
 const mercadoPagoService = require('./services/mercadoPago');
+const logger = require('./utils/logger');
+const NotificationHelper = require('./utils/notificationHelper');
 
 const app = express();
 const server = createServer(app);
@@ -168,6 +170,28 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    // Registrar actividad de login
+    await db.logActivity({
+      userId: user.id,
+      userName: user.nombre,
+      userRole: user.tipo,
+      actionType: 'auth',
+      actionDescription: 'Inició sesión',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    // Registrar actividad de login
+    await db.logActivity({
+      userId: user.id,
+      userName: user.nombre,
+      userRole: user.tipo,
+      actionType: 'auth',
+      actionDescription: 'Inició sesión',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
     const { password: _, ...userWithoutPassword } = user;
     res.json({
       user: userWithoutPassword,
@@ -218,6 +242,17 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    // Registrar actividad de registro
+    await db.logActivity({
+      userId: newUser.id,
+      userName: newUser.nombre,
+      userRole: newUser.tipo,
+      actionType: 'auth',
+      actionDescription: 'Se registró en la plataforma',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
     res.status(201).json({
       user: newUser,
       token
@@ -227,66 +262,6 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
-
-// ================================
-// RUTAS DE PERFIL
-// ================================
-
-// Actualizar perfil de usuario
-app.put('/api/profile', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { nombre, email, telefono, biografia, currentPassword, newPassword } = req.body;
-
-    if (!nombre || !email) {
-      return res.status(400).json({ error: 'Nombre y email son obligatorios' });
-    }
-
-    // Verificar si el email ya existe para otro usuario
-    const existingUser = await db.getUserByEmail(email);
-    if (existingUser && existingUser.id !== userId) {
-      return res.status(400).json({ error: 'El email ya está en uso por otro usuario' });
-    }
-
-    // Si se quiere cambiar contraseña, verificar la actual
-    if (newPassword) {
-      if (!currentPassword) {
-        return res.status(400).json({ error: 'Contraseña actual requerida' });
-      }
-
-      const user = await db.getUserById(userId);
-      const validPassword = await bcrypt.compare(currentPassword, user.password);
-      if (!validPassword) {
-        return res.status(400).json({ error: 'Contraseña actual incorrecta' });
-      }
-    }
-
-    // Preparar datos de actualización
-    const updateData = {
-      nombre,
-      email,
-      telefono: telefono || null,
-      biografia: biografia || null
-    };
-
-    // Si hay nueva contraseña, encriptarla
-    if (newPassword) {
-      updateData.password = await bcrypt.hash(newPassword, 10);
-    }
-
-    // Actualizar usuario
-    const updatedUser = await db.updateUser(userId, updateData);
-    
-    // Remover password del response
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    
-    res.json(userWithoutPassword);
-  } catch (error) {
-    console.error('Error al actualizar perfil:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-});
-
 // ================================
 // RUTAS DE CURSOS
 // ================================
@@ -355,10 +330,26 @@ app.post('/api/courses', authenticateToken, requireProfessor, async (req, res) =
 app.get('/api/courses/my-courses', authenticateToken, requireProfessor, async (req, res) => {
   try {
     const courses = await db.getCoursesByProfessor(req.user.userId);
-    res.json(courses);
+    
+    // Contar estudiantes por curso
+    const coursesWithStats = await Promise.all(courses.map(async (course) => {
+      const enrollments = await db.getCourseEnrollments(course.id);
+      return {
+        ...course,
+        estudiantes: enrollments.length
+      };
+    }));
+    
+    res.json({
+      success: true,
+      courses: coursesWithStats
+    });
   } catch (error) {
     console.error('Error al obtener cursos del profesor:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Error interno del servidor' 
+    });
   }
 });
 
@@ -855,6 +846,11 @@ app.use('/api', gamificationRoutes);
 const enrollmentRoutes = require('./src/routes/enrollments')(db, authenticateToken);
 app.use('/api', enrollmentRoutes);
 
+// Inicializar NotificationHelper inmediatamente (db ya está inicializado)
+const notificationHelper = new NotificationHelper(db, io);
+app.set('notificationHelper', notificationHelper);
+logger.success('NotificationHelper inicializado correctamente');
+
 // ================================
 // RUTAS DE ADMINISTRADOR
 // ================================
@@ -910,16 +906,25 @@ app.get('/api/health', async (req, res) => {
 // ================================
 
 app.use((err, req, res, next) => {
-  console.error('Error no manejado:', err.stack);
-  res.status(500).json({ error: 'Error interno del servidor' });
+  logger.error('Unhandled error', err, {
+    url: req.url,
+    method: req.method,
+    ip: req.ip
+  });
+  
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Error interno del servidor' 
+      : err.message
+  });
 });
 
 // Ruta para el frontend en producción
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/build')));
+  app.use(express.static(path.join(__dirname, '../frontend/dist')));
   
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
   });
 }
 
@@ -928,35 +933,9 @@ if (process.env.NODE_ENV === 'production') {
 // ================================
 
 // Obtener notificaciones del usuario
-app.get('/api/notifications', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    
-    // Por ahora retornamos array vacío, más tarde implementar en DB
-    res.json([]);
-    
-    // TODO: Implementar tabla de notificaciones en la DB
-    // const notifications = await db.getUserNotifications(userId);
-    // res.json(notifications);
-  } catch (error) {
-    console.error('Error al obtener notificaciones:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-});
-
-// Marcar notificación como leída
-app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId;
-    
-    // TODO: Implementar lógica de marcado como leída
-    res.json({ message: 'Notificación marcada como leída' });
-  } catch (error) {
-    console.error('Error al marcar notificación:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-});
+// ================================
+// NOTIFICACIONES - Rutas movidas a /src/routes/notifications.js
+// ================================
 
 // ================================
 // RUTAS DE EVENTOS/CALENDARIO
@@ -1302,6 +1281,315 @@ app.get('/api/analytics', authenticateToken, async (req, res) => {
 });
 
 // ================================
+// RUTAS DE ADMINISTRACIÓN
+// ================================
+
+// Listar todos los usuarios (solo admin)
+app.get('/api/users', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.tipo !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const users = await db.getAllUsers();
+    res.json(users);
+  } catch (error) {
+    console.error('Error al obtener usuarios:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Eliminar usuario (solo admin)
+app.delete('/api/admin/users/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.tipo !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const userId = parseInt(req.params.id);
+    
+    // No permitir que el admin se elimine a sí mismo
+    if (userId === req.user.userId) {
+      return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
+    }
+
+    await db.deleteUser(userId);
+    res.json({ message: 'Usuario eliminado correctamente' });
+  } catch (error) {
+    console.error('Error al eliminar usuario:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Cambiar estado de usuario (solo admin)
+app.patch('/api/admin/users/:id/toggle-status', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.tipo !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const userId = parseInt(req.params.id);
+    await db.toggleUserStatus(userId);
+    res.json({ message: 'Estado del usuario actualizado' });
+  } catch (error) {
+    console.error('Error al cambiar estado del usuario:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Estadísticas del sistema (solo admin)
+app.get('/api/admin/stats', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.tipo !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const users = await db.getAllUsers();
+    const courses = await db.getAllCourses();
+    
+    const stats = {
+      totalUsers: users.length,
+      activeUsers: users.filter(u => u.activo !== false).length,
+      totalCourses: courses.length,
+      totalForumPosts: 0,
+      totalCertificates: 0,
+      systemUptime: process.uptime()
+    };
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error al obtener estadísticas:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// ================================
+// RUTAS DE PERFIL DE USUARIO
+// ================================
+
+// Obtener perfil del usuario actual
+app.get('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await db.getUserById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const { password, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Error al obtener perfil:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Actualizar perfil del usuario
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const { nombre, email, telefono, biografia } = req.body;
+    const userId = req.user.userId;
+
+    // Verificar si el email ya está en uso por otro usuario
+    if (email && email !== req.user.email) {
+      const existingUser = await db.getUserByEmail(email);
+      if (existingUser && existingUser.id !== userId) {
+        return res.status(400).json({ error: 'El email ya está en uso' });
+      }
+    }
+
+    await db.updateUser(userId, { nombre, email, telefono, biografia });
+    
+    const updatedUser = await db.getUserById(userId);
+    const { password, ...userWithoutPassword } = updatedUser;
+    
+    res.json({
+      message: 'Perfil actualizado correctamente',
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    console.error('Error al actualizar perfil:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Subir foto de perfil
+app.post('/api/profile/photo', authenticateToken, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se subió ningún archivo' });
+    }
+
+    const photoUrl = `/uploads/${req.file.filename}`;
+    await db.updateUser(req.user.userId, { foto: photoUrl });
+
+    // Registrar actividad
+    await db.logActivity({
+      userId: req.user.userId,
+      userName: req.user.nombre,
+      userRole: req.user.tipo,
+      actionType: 'profile_update',
+      actionDescription: 'Actualizó su foto de perfil',
+      entityType: 'user',
+      entityId: req.user.userId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({
+      message: 'Foto de perfil actualizada',
+      photoUrl
+    });
+  } catch (error) {
+    console.error('Error al subir foto:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Cambiar contraseña
+app.put('/api/profile/password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Contraseñas requeridas' });
+    }
+
+    const user = await db.getUserById(req.user.userId);
+    const validPassword = await bcrypt.compare(currentPassword, user.password);
+
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.updateUser(req.user.userId, { password: hashedPassword });
+
+    // Registrar actividad
+    await db.logActivity({
+      userId: req.user.userId,
+      userName: req.user.nombre,
+      userRole: req.user.tipo,
+      actionType: 'security',
+      actionDescription: 'Cambió su contraseña',
+      entityType: 'user',
+      entityId: req.user.userId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({ message: 'Contraseña actualizada correctamente' });
+  } catch (error) {
+    console.error('Error al cambiar contraseña:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// ================================
+// RUTAS DE REGISTRO DE ACTIVIDAD (Admin)
+// ================================
+
+// Obtener logs de actividad
+app.get('/api/admin/activity-logs', authenticateToken, async (req, res) => {
+  try {
+    // Verificar que sea admin
+    if (req.user.tipo !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const {
+      userId,
+      actionType,
+      entityType,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    const filters = {
+      userId: userId ? parseInt(userId) : undefined,
+      actionType,
+      entityType,
+      startDate,
+      endDate,
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit)
+    };
+
+    const [logs, total] = await Promise.all([
+      db.getActivityLogs(filters),
+      db.countActivityLogs(filters)
+    ]);
+
+    res.json({
+      logs,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error al obtener logs de actividad:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Obtener estadísticas de actividad
+app.get('/api/admin/activity-stats', authenticateToken, async (req, res) => {
+  try {
+    // Verificar que sea admin
+    if (req.user.tipo !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const { startDate, endDate } = req.query;
+    const filters = { startDate, endDate };
+
+    // Obtener todos los logs del período
+    const logs = await db.getActivityLogs(filters);
+
+    // Calcular estadísticas
+    const stats = {
+      total: logs.length,
+      byActionType: {},
+      byUserRole: {},
+      byEntityType: {},
+      topUsers: {},
+      recentActivity: logs.slice(0, 10)
+    };
+
+    logs.forEach(log => {
+      // Por tipo de acción
+      stats.byActionType[log.action_type] = (stats.byActionType[log.action_type] || 0) + 1;
+      
+      // Por rol de usuario
+      stats.byUserRole[log.user_role] = (stats.byUserRole[log.user_role] || 0) + 1;
+      
+      // Por tipo de entidad
+      if (log.entity_type) {
+        stats.byEntityType[log.entity_type] = (stats.byEntityType[log.entity_type] || 0) + 1;
+      }
+      
+      // Usuarios más activos
+      stats.topUsers[log.user_name] = (stats.topUsers[log.user_name] || 0) + 1;
+    });
+
+    // Convertir topUsers a array y ordenar
+    stats.topUsers = Object.entries(stats.topUsers)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error al obtener estadísticas de actividad:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// ================================
 // SOCKET.IO PARA CHAT EN TIEMPO REAL
 // ================================
 
@@ -1339,10 +1627,18 @@ io.on('connection', (socket) => {
 // ================================
 
 server.listen(PORT, () => {
-  console.log(`🚀 Servidor ejecutándose en puerto ${PORT}`);
-  console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`💾 Base de datos: SQLite iniciada`);
-  console.log(`💬 Socket.IO habilitado para chat en tiempo real`);
+  logger.success(`Servidor ejecutándose en puerto ${PORT}`);
+  logger.info(`Entorno: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`Base de datos: SQLite iniciada`);
+  logger.info(`Socket.IO habilitado para chat en tiempo real`);
+  
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`\n🚀 Servidor ejecutándose en puerto ${PORT}`);
+    console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`💾 Base de datos: SQLite iniciada`);
+    console.log(`💬 Socket.IO habilitado para chat en tiempo real`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/api/health\n`);
+  }
 });
 
 module.exports = { app, server, io };

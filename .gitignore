@@ -10,11 +10,19 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 .env.production
+backend/.env
+frontend/.env
 
 # Build outputs
 dist/
 build/
 *.log
+
+# Logs
+logs/
+*.log
+backend/logs/
+frontend/logs/
 
 # IDE
 .vscode/
@@ -33,6 +41,7 @@ Thumbs.db
 *.sqlite3
 database/*.db
 database/*.sqlite
+!database/init.sql
 
 # Temporary files
 *.tmp
@@ -41,9 +50,19 @@ database/*.sqlite
 
 # Uploads y archivos generados
 uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
 certificates/*.pdf
 certificates/*.png
 certificates/*.jpg
+
+# Testing
+coverage/
+.nyc_output/
+
+# Production builds
+frontend/dist/
+frontend/build/
 
 # Python
 __pycache__/
