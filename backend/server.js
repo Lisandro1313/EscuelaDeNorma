@@ -4,6 +4,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
@@ -29,6 +31,28 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'campus_norma_secret_key_2024';
+
+// Middleware de compresión
+app.use(compression());
+
+// Rate limiting - protección contra ataques
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // límite de 100 requests por IP
+  message: 'Demasiadas solicitudes desde esta IP, por favor intente más tarde.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Aplicar rate limiting a todas las rutas API
+app.use('/api/', limiter);
+
+// Rate limiting más estricto para login/register
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5, // máximo 5 intentos
+  message: 'Demasiados intentos de acceso, por favor intente más tarde.',
+});
 
 // Middleware de seguridad
 app.use(helmet({
@@ -120,7 +144,7 @@ const VideoConference = require('./src/models/VideoConference');
 // RUTAS DE AUTENTICACIÓN
 // ================================
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     
@@ -155,7 +179,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, password, nombre, tipo = 'alumno', teacherCode } = req.body;
     
