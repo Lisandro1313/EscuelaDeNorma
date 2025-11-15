@@ -24,9 +24,10 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? ['https://campusnorma.com', 'https://www.campusnorma.com']
-      : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'],
+    origin: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 
+      (process.env.NODE_ENV === 'production'
+        ? ['https://escuela-norma-frontend.onrender.com', 'https://campusnorma.com', 'https://www.campusnorma.com']
+        : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001']),
     credentials: true
   }
 });
@@ -71,9 +72,10 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? ['https://campusnorma.com', 'https://www.campusnorma.com']
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'],
+  origin: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 
+    (process.env.NODE_ENV === 'production'
+      ? ['https://escuela-norma-frontend.onrender.com', 'https://campusnorma.com', 'https://www.campusnorma.com']
+      : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001']),
   credentials: true
 }));
 
