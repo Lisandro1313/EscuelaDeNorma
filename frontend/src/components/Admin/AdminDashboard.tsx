@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import ActivityLogs from './ActivityLogs';
+import { CourseManagement } from '../CourseManagement';
 
 interface SystemStats {
   totalUsers: number;
   activeUsers: number;
   totalCourses: number;
-  totalForumPosts: number;
+  totalEnrollments: number;
+  totalRevenue: number;
   totalCertificates: number;
-  systemUptime: string;
+  monthlyRevenue: number;
+  newUsersThisMonth: number;
 }
 
 interface User {
@@ -20,11 +23,24 @@ interface User {
   activo: boolean;
 }
 
+interface Payment {
+  id: number;
+  usuario: string;
+  curso: string;
+  monto: number;
+  fecha: string;
+  estado: string;
+}
+
+type TabType = 'dashboard' | 'users' | 'courses' | 'payments' | 'activity' | 'system';
+
 export const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [selectedTab, setSelectedTab] = useState<'dashboard' | 'users' | 'system' | 'activity'>('dashboard');
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [selectedTab, setSelectedTab] = useState<TabType>('dashboard');
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -32,18 +48,37 @@ export const AdminDashboard: React.FC = () => {
 
   const fetchData = async () => {
     try {
+      setLoading(true);
       const [statsResponse, usersResponse] = await Promise.all([
-        api.get('/admin/stats'),
-        api.get('/users')
+        api.get('/admin/stats').catch(() => ({ data: getDefaultStats() })),
+        api.get('/users').catch(() => ({ data: [] }))
       ]);
+      
       setStats(statsResponse.data);
       setUsers(usersResponse.data);
+
+      // Fetch payments if on payments tab
+      if (selectedTab === 'payments') {
+        const paymentsResponse = await api.get('/payments').catch(() => ({ data: [] }));
+        setPayments(paymentsResponse.data);
+      }
     } catch (error) {
       console.error('Error fetching admin data:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  const getDefaultStats = (): SystemStats => ({
+    totalUsers: 0,
+    activeUsers: 0,
+    totalCourses: 0,
+    totalEnrollments: 0,
+    totalRevenue: 0,
+    totalCertificates: 0,
+    monthlyRevenue: 0,
+    newUsersThisMonth: 0
+  });
 
   const toggleUserStatus = async (userId: number) => {
     try {
@@ -61,9 +96,25 @@ export const AdminDashboard: React.FC = () => {
         await fetchData(); // Refresh data
       } catch (error) {
         console.error('Error deleting user:', error);
+        alert('Error al eliminar usuario');
       }
     }
   };
+
+  const changeUserRole = async (userId: number, newRole: string) => {
+    try {
+      await api.patch(`/admin/users/${userId}/role`, { tipo: newRole });
+      await fetchData();
+    } catch (error) {
+      console.error('Error changing user role:', error);
+      alert('Error al cambiar rol del usuario');
+    }
+  };
+
+  const filteredUsers = users.filter(user =>
+    user.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -82,44 +133,64 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="mb-8">
-          <nav className="flex space-x-8">
+        <div className="mb-8 border-b border-gray-200">
+          <nav className="flex space-x-8 overflow-x-auto">
             <button
               onClick={() => setSelectedTab('dashboard')}
-              className={`py-2 px-4 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                 selectedTab === 'dashboard'
                   ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               📊 Dashboard
             </button>
             <button
               onClick={() => setSelectedTab('users')}
-              className={`py-2 px-4 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                 selectedTab === 'users'
                   ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              👥 Usuarios
+              👥 Usuarios ({users.length})
+            </button>
+            <button
+              onClick={() => setSelectedTab('courses')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                selectedTab === 'courses'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              📚 Cursos
+            </button>
+            <button
+              onClick={() => { setSelectedTab('payments'); fetchData(); }}
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                selectedTab === 'payments'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              💰 Pagos
             </button>
             <button
               onClick={() => setSelectedTab('activity')}
-              className={`py-2 px-4 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                 selectedTab === 'activity'
                   ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               📋 Actividad
             </button>
             <button
               onClick={() => setSelectedTab('system')}
-              className={`py-2 px-4 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                 selectedTab === 'system'
                   ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               ⚙️ Sistema
@@ -219,6 +290,68 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Courses Tab */}
+        {selectedTab === 'courses' && (
+          <div>
+            <CourseManagement />
+          </div>
+        )}
+
+        {/* Payments Tab */}
+        {selectedTab === 'payments' && (
+          <div className="bg-white shadow-sm rounded-lg border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Historial de Pagos</h3>
+            </div>
+            <div className="p-6">
+              {payments.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">💳</div>
+                  <p className="text-gray-500">No hay pagos registrados aún</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Curso</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monto</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {payments.map((payment) => (
+                        <tr key={payment.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{payment.usuario}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{payment.curso}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            ${payment.monto.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(payment.fecha).toLocaleDateString('es-AR')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              payment.estado === 'approved' ? 'bg-green-100 text-green-800' :
+                              payment.estado === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {payment.estado === 'approved' ? 'Aprobado' :
+                               payment.estado === 'pending' ? 'Pendiente' : 'Rechazado'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Activity Tab */}
         {selectedTab === 'activity' && (
           <ActivityLogs />
@@ -226,9 +359,22 @@ export const AdminDashboard: React.FC = () => {
 
         {/* Users Tab */}
         {selectedTab === 'users' && (
-          <div className="bg-white shadow rounded-lg">
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <input
+                type="text"
+                placeholder="Buscar usuarios por nombre o email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            {/* Users Table */}
+            <div className="bg-white shadow rounded-lg">
             <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Gestión de Usuarios</h3>
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Gestión de Usuarios ({filteredUsers.length})</h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -251,7 +397,7 @@ export const AdminDashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map((user) => (
+                    {filteredUsers.map((user) => (
                       <tr key={user.id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
@@ -260,13 +406,20 @@ export const AdminDashboard: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            user.tipo === 'admin' ? 'bg-red-100 text-red-800' :
-                            user.tipo === 'profesor' ? 'bg-blue-100 text-blue-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {user.tipo}
-                          </span>
+                          <select
+                            value={user.tipo}
+                            onChange={(e) => changeUserRole(user.id, e.target.value)}
+                            disabled={user.tipo === 'admin'}
+                            className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                              user.tipo === 'admin' ? 'bg-red-100 text-red-800 cursor-not-allowed' :
+                              user.tipo === 'profesor' ? 'bg-blue-100 text-blue-800' :
+                              'bg-green-100 text-green-800'
+                            }`}
+                          >
+                            <option value="estudiante">Estudiante</option>
+                            <option value="profesor">Profesor</option>
+                            {user.tipo === 'admin' && <option value="admin">Admin</option>}
+                          </select>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -303,6 +456,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+          </div>
         )}
 
         {/* System Tab */}
@@ -317,7 +471,7 @@ export const AdminDashboard: React.FC = () => {
                       <h4 className="text-sm font-medium text-gray-900">Registro de Usuarios</h4>
                       <p className="text-sm text-gray-500">Permitir nuevos registros en la plataforma</p>
                     </div>
-                    <button className="bg-green-600 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <button className="bg-green-600 relative inline-flex shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                       <span className="translate-x-5 pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"></span>
                     </button>
                   </div>
@@ -326,7 +480,7 @@ export const AdminDashboard: React.FC = () => {
                       <h4 className="text-sm font-medium text-gray-900">Notificaciones por Email</h4>
                       <p className="text-sm text-gray-500">Enviar notificaciones automáticas por correo</p>
                     </div>
-                    <button className="bg-gray-200 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <button className="bg-gray-200 relative inline-flex shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                       <span className="translate-x-0 pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"></span>
                     </button>
                   </div>
@@ -335,7 +489,7 @@ export const AdminDashboard: React.FC = () => {
                       <h4 className="text-sm font-medium text-gray-900">Modo Mantenimiento</h4>
                       <p className="text-sm text-gray-500">Activar modo mantenimiento para la plataforma</p>
                     </div>
-                    <button className="bg-gray-200 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <button className="bg-gray-200 relative inline-flex shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                       <span className="translate-x-0 pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"></span>
                     </button>
                   </div>
